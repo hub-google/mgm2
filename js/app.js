@@ -110,14 +110,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // 1. 計算專屬原始網址
-    // 去除 admin/ 或 admin/index.html 段落，使跳轉直接經由根目錄的 404.html
-    let base = window.location.origin + window.location.pathname;
-    base = base.replace(/admin\/(index\.html)?$/, '');
-    if (!base.endsWith('/')) {
-      base += '/';
+    // 如果有設定 GAS，我們將邀請連結直接指向 GAS Web App，格式為 [GAS_WEB_APP_URL]?code=[code]
+    // 這樣做可以讓客戶點擊時完全看不到並繞過您的 GitHub Pages 網址 (hub-google.github.io)，達到完美防窺！
+    let longUrl = '';
+    if (useGas) {
+      longUrl = `${CONFIG.GAS_WEB_APP_URL}?code=${code}`;
+    } else {
+      // 本地開發模式備用
+      let base = window.location.origin + window.location.pathname;
+      base = base.replace(/admin\/(index\.html)?$/, '');
+      if (!base.endsWith('/')) {
+        base += '/';
+      }
+      longUrl = base + code;
     }
-    
-    const longUrl = base + code;
     
     // 設定備用原始網址欄位
     const generatedBackupUrlInput = document.getElementById('generated-backup-url-input');
