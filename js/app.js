@@ -391,7 +391,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td class="text-center">${rankBadge}</td>
-        <td style="font-weight: 600; letter-spacing: 0.5px;">${row.salesperson_code}</td>
+        <td style="font-weight: 600; letter-spacing: 0.5px;">
+          <a class="salesperson-link" data-code="${row.salesperson_code}" title="點擊查看詳細點擊時間">${row.salesperson_code}</a>
+        </td>
         <td class="text-right"><span class="badge-clicks">${row.clicks}</span> 次</td>
         <td style="color: var(--text-secondary); font-size: 12px;">${lastTimeStr}</td>
       `;
@@ -529,7 +531,113 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==========================================
-  // 9. 頁面初始化加載數據
+  // 9. 業務員點擊明細 Modal 邏輯
+  // ==========================================
+  const detailModal = document.getElementById('detail-modal');
+  const modalSalesCode = document.getElementById('modal-sales-code');
+  const modalTotalClicks = document.getElementById('modal-total-clicks');
+  const modalLogsTableBody = document.querySelector('#modal-logs-table tbody');
+  const modalCloseBtn = document.getElementById('modal-close-btn');
+
+  // 排行榜點擊事件代理
+  leaderboardTableBody.addEventListener('click', (e) => {
+    const targetLink = e.target.closest('.salesperson-link');
+    if (targetLink) {
+      e.preventDefault();
+      const code = targetLink.dataset.code;
+      openSalespersonModal(code);
+    }
+  });
+
+  async function openSalespersonModal(code) {
+    if (!code) return;
+    
+    // 設定 Modal 標題與重設欄位
+    modalSalesCode.textContent = `業務員 [${code}] 點擊明細`;
+    modalTotalClicks.textContent = '...';
+    modalLogsTableBody.innerHTML = '<tr><td colspan="4" class="text-center">資料載入中...</td></tr>';
+    
+    // 顯示 Modal
+    detailModal.classList.remove('hidden');
+
+    // 計算明細 API 網址
+    let detailApiUrl = '';
+    if (useGas) {
+      detailApiUrl = `${CONFIG.GAS_WEB_APP_URL}?action=detail&code=${encodeURIComponent(code)}`;
+    } else if (isLocal) {
+      detailApiUrl = `/api/stats/salesperson/${encodeURIComponent(code)}`;
+    }
+
+    if (!detailApiUrl) {
+      modalLogsTableBody.innerHTML = '<tr><td colspan="4" class="text-center">API 尚未設定</td></tr>';
+      return;
+    }
+
+    try {
+      const response = await fetch(detailApiUrl);
+      const res = await response.json();
+      
+      if (res && res.success) {
+        const details = res.data || [];
+        modalTotalClicks.textContent = details.length;
+        
+        modalLogsTableBody.innerHTML = '';
+        if (details.length === 0) {
+          modalLogsTableBody.innerHTML = '<tr><td colspan="4" class="text-center">暫無詳細記錄</td></tr>';
+          return;
+        }
+
+        details.forEach(click => {
+          const timeStr = formatDateTime(click.clicked_at);
+          let refererText = click.referer || '直接存取 / 無來源';
+          if (refererText.startsWith('http')) {
+            try {
+              const urlObj = new URL(refererText);
+              refererText = `<a href="${click.referer}" target="_blank" style="color: #6366f1; text-decoration: none;" title="${click.referer}">${urlObj.hostname}${urlObj.pathname.substring(0, 15)}...</a>`;
+            } catch (e) {
+              // fallback
+            }
+          }
+
+          // 取得系統圖示
+          let osIcon = '<i class="fa-solid fa-laptop"></i>';
+          const osLower = (click.os || '').toLowerCase();
+          if (osLower.includes('ios') || osLower.includes('mac')) osIcon = '<i class="fa-brands fa-apple" style="color: #a3a3a3;"></i>';
+          else if (osLower.includes('android')) osIcon = '<i class="fa-brands fa-android" style="color: #22c55e;"></i>';
+          else if (osLower.includes('windows')) osIcon = '<i class="fa-brands fa-windows" style="color: #0ea5e9;"></i>';
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td style="color: var(--text-secondary); font-family: 'Outfit'; font-size: 12px;">${timeStr}</td>
+            <td style="font-size: 11.5px; display: flex; align-items: center; gap: 6px; border-bottom: none; height: 100%; min-height: 48px;">${osIcon} <span>${click.os || 'Unknown'}</span></td>
+            <td style="font-size: 11.5px;">${click.browser || 'Unknown'}</td>
+            <td style="font-size: 11.5px;">${refererText}</td>
+          `;
+          modalLogsTableBody.appendChild(tr);
+        });
+      } else {
+        modalLogsTableBody.innerHTML = '<tr><td colspan="4" class="text-center error">讀取明細失敗</td></tr>';
+      }
+    } catch (err) {
+      console.error('明細載入失敗:', err);
+      modalLogsTableBody.innerHTML = '<tr><td colspan="4" class="text-center error">連線失敗，請重試</td></tr>';
+    }
+  }
+
+  // 關閉 Modal 事件
+  modalCloseBtn.addEventListener('click', closeModal);
+  detailModal.addEventListener('click', (e) => {
+    if (e.target === detailModal) {
+      closeModal();
+    }
+  });
+
+  function closeModal() {
+    detailModal.classList.add('hidden');
+  }
+
+  // ==========================================
+  // 10. 頁面初始化加載數據
   // ==========================================
   if (statsApiUrl) {
     fetchStats();

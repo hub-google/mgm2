@@ -358,9 +358,37 @@ async function getAllClicks() {
   }
 }
 
+/**
+ * Get click logs for a specific salesperson
+ */
+async function getSalespersonClicks(code) {
+  const formattedCode = (code || '').trim().toUpperCase();
+  if (dbType === 'sqlite') {
+    return await allRows(`
+      SELECT clicked_at, browser, os, device, referer
+      FROM clicks
+      WHERE salesperson_code = ?
+      ORDER BY clicked_at DESC
+    `, [formattedCode]);
+  } else {
+    const clicks = readJsonDb();
+    return clicks
+      .filter(c => c.salesperson_code === formattedCode)
+      .sort((a, b) => new Date(b.clicked_at) - new Date(a.clicked_at))
+      .map(c => ({
+        clicked_at: c.clicked_at,
+        browser: c.browser,
+        os: c.os,
+        device: c.device,
+        referer: c.referer
+      }));
+  }
+}
+
 module.exports = {
   initDb,
   insertClick,
   getStats,
-  getAllClicks
+  getAllClicks,
+  getSalespersonClicks
 };

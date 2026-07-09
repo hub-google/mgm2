@@ -253,6 +253,39 @@
     </div>
   </footer>
 
+  <!-- Salesperson Detail Modal -->
+  <div id="detail-modal" class="modal-overlay hidden">
+    <div class="card glass-card modal-content">
+      <div class="modal-header">
+        <div class="card-title">
+          <i class="fa-solid fa-circle-info"></i>
+          <h2 id="modal-sales-code">業務員 [CODE] 點擊明細</h2>
+        </div>
+        <button id="modal-close-btn" class="modal-close"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body-content">
+        <div class="modal-stats-summary">
+          <span>累計推廣點擊次數：<strong id="modal-total-clicks" style="color: #6366f1;">0</strong> 次</span>
+        </div>
+        <div class="scrollable-table" style="max-height: 350px; border-top: 1px solid var(--table-border);">
+          <table class="app-table" id="modal-logs-table">
+            <thead>
+              <tr>
+                <th width="180">點擊時間</th>
+                <th width="120">作業系統</th>
+                <th width="140">瀏覽器</th>
+                <th>來源網頁</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Dynamic Rows -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- QRCode JS CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <!-- Chart.js CDN -->

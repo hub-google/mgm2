@@ -170,6 +170,31 @@ function doGet(e) {
       });
     }
 
+    // 處理獲取特定業務員點擊明細 (Get Salesperson Detail Logs)
+    if (action === 'detail') {
+      const code = (e.parameter.code || '').trim().toUpperCase();
+      const dataRange = sheet.getDataRange();
+      const rows = dataRange.getValues();
+      const records = rows.slice(1);
+
+      const details = records
+        .filter(row => row[1] === code)
+        .reverse() // 最新的在前
+        .map(row => ({
+          clicked_at: row[0],
+          ip_address: row[2],
+          browser: row[3],
+          os: row[4],
+          device: row[5],
+          referer: row[6]
+        }));
+
+      return JSON_OUTPUT({
+        success: true,
+        data: details
+      });
+    }
+
     return JSON_OUTPUT({ success: false, error: "Invalid action" });
 
   } catch (err) {

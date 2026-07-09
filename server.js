@@ -70,6 +70,18 @@ app.get('/api/stats/export', async (req, res) => {
     console.error('[Server] Error exporting CSV:', err);
     res.status(500).send('Export failed.');
   }
+/**
+ * API Endpoint: Get click logs for a specific salesperson
+ */
+app.get('/api/stats/salesperson/:code', async (req, res) => {
+  try {
+    const code = req.params.code.trim().toUpperCase();
+    const clicks = await db.getSalespersonClicks(code);
+    res.json({ success: true, data: clicks });
+  } catch (err) {
+    console.error(`[Server] Error fetching salesperson detail for [${req.params.code}]:`, err);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
 });
 
 /**
