@@ -38,7 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // 2. 佈景主題切換 (Dark / Light Mode)
   // ==========================================
   const themeToggleBtn = document.getElementById('theme-toggle-btn');
-  const savedTheme = localStorage.getItem('theme') || 'dark';
+  const savedTheme = localStorage.getItem('theme') || 'light';
   document.documentElement.setAttribute('data-theme', savedTheme);
   updateThemeIcon(savedTheme);
 
@@ -100,7 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   generateBtn.addEventListener('click', generateLink);
 
-  function generateLink() {
+  async function generateLink() {
     const code = salespersonInput.value.trim();
     if (!code || code.length < 2) {
       inputFeedback.className = 'feedback-text error';
@@ -109,37 +109,69 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // 計算專屬 URL
-    // GitHub Pages 路徑為: https://username.github.io/repo/code
-    // 本地路徑為: http://localhost:3000/code
+    // 1. 計算專屬原始網址
+    // 去除 admin/ 或 admin/index.html 段落，使跳轉直接經由根目錄的 404.html
     let base = window.location.origin + window.location.pathname;
-    // 確保 base 結尾有斜線
+    base = base.replace(/admin\/(index\.html)?$/, '');
     if (!base.endsWith('/')) {
       base += '/';
     }
     
-    generatedUrl = base + code;
-    generatedUrlInput.value = generatedUrl;
+    const longUrl = base + code;
     
-    // 生成 QR Code (使用 QRCode.js)
+    // 設定備用原始網址欄位
+    const generatedBackupUrlInput = document.getElementById('generated-backup-url-input');
+    if (generatedBackupUrlInput) {
+      generatedBackupUrlInput.value = longUrl;
+    }
+
+    // 設定預設顯示（生成中）
+    generatedUrlInput.value = '正在生成短網址...';
+    generatedUrlInput.style.color = 'var(--text-muted)';
+    
+    // 預設將 QR Code 解析指向原始網址，若短網址成功再替換
+    drawQrCode(longUrl);
+
+    // 展開結果區塊
+    generatorResult.classList.remove('hidden');
+    generatorResult.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    // 2. 調用短網址 API (is.gd)
+    try {
+      const response = await fetch(`https://is.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`);
+      const data = await response.json();
+      
+      if (data && data.shorturl) {
+        generatedUrl = data.shorturl;
+        generatedUrlInput.value = generatedUrl;
+        generatedUrlInput.style.color = '';
+        // 替換二維碼為短網址，使掃描結果同樣被遮蔽且更簡潔
+        drawQrCode(generatedUrl);
+      } else {
+        throw new Error('API return error');
+      }
+    } catch (err) {
+      console.warn('短網址生成失敗，改用原始網址作為預設:', err);
+      generatedUrl = longUrl;
+      generatedUrlInput.value = longUrl;
+      generatedUrlInput.style.color = '';
+      drawQrCode(longUrl);
+    }
+  }
+
+  function drawQrCode(text) {
     qrcodeDiv.innerHTML = '';
     new QRCode(qrcodeDiv, {
-      text: generatedUrl,
+      text: text,
       width: 120,
       height: 120,
       colorDark: "#000000",
       colorLight: "#ffffff",
       correctLevel: QRCode.CorrectLevel.H
     });
-
-    // 展開結果區塊
-    generatorResult.classList.remove('hidden');
-    
-    // 微動畫捲動到結果
-    generatorResult.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
-  // 複製連結按鈕
+  // 複製短網址按鈕
   copyBtn.addEventListener('click', () => {
     if (!generatedUrl) return;
     
@@ -159,6 +191,30 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error('複製失敗:', err);
     });
   });
+
+  // 複製備用連結按鈕
+  const copyBackupBtn = document.getElementById('copy-backup-btn');
+  if (copyBackupBtn) {
+    copyBackupBtn.addEventListener('click', () => {
+      const generatedBackupUrlInput = document.getElementById('generated-backup-url-input');
+      if (!generatedBackupUrlInput || !generatedBackupUrlInput.value) return;
+      
+      navigator.clipboard.writeText(generatedBackupUrlInput.value).then(() => {
+        const originalHtml = copyBackupBtn.innerHTML;
+        copyBackupBtn.innerHTML = '<i class="fa-solid fa-check"></i> 已複製！';
+        copyBackupBtn.style.background = 'var(--grad-green)';
+        copyBackupBtn.style.color = '#fff';
+        
+        setTimeout(() => {
+          copyBackupBtn.innerHTML = originalHtml;
+          copyBackupBtn.style.background = '';
+          copyBackupBtn.style.color = '';
+        }, 2000);
+      }).catch(err => {
+        console.error('備用網址複製失敗:', err);
+      });
+    });
+  }
 
   // 下載 QR Code PNG
   downloadQrBtn.addEventListener('click', () => {
