@@ -1,0 +1,6 @@
+node_modules/
+.env
+db.json
+mgm.db
+.DS_Store
+*.tmp

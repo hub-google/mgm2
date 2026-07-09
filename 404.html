@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>正在跳轉至 LINE OA 推廣頁面...</title>
+  <style>
+    :root {
+      --bg-color: #0b0f19;
+      --text-color: #f3f4f6;
+      --accent-color: #6366f1;
+    }
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      text-align: center;
+      padding: 20px;
+    }
+    .loader {
+      border: 4px solid rgba(255, 255, 255, 0.1);
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border-left-color: var(--accent-color);
+      animation: spin 1s linear infinite;
+      margin-bottom: 24px;
+    }
+    h2 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    p {
+      color: #9ca3af;
+      font-size: 14px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="loader"></div>
+  <h2>正在為您跳轉至 LINE OA...</h2>
+  <p>系統正在為您建立推薦關係，請稍候。</p>
+
+  <!-- Load Global Config -->
+  <script src="js/config.js"></script>
+  <script>
+    (function() {
+      // 1. 解析業務員代碼
+      // 網址路徑格式可能為: /[repo-name]/[code] 或 /[code] (自訂網域)
+      const path = window.location.pathname;
+      const pathParts = path.split('/').filter(Boolean);
+      
+      // 檢查是否從 Query Parameter 傳入代碼 (e.g. ?code=A123)
+      const urlParams = new URLSearchParams(window.location.search);
+      let code = urlParams.get('code');
+      
+      if (!code && pathParts.length > 0) {
+        // 如果是在 GitHub Pages 上，第一段通常是 Repository 名稱 (例如 MGM2)
+        // 所以最後一段才是業務員代號 (例如 A001)
+        const lastSegment = pathParts[pathParts.length - 1];
+        // 排除常見的靜態檔案與首頁路徑
+        if (lastSegment && !lastSegment.includes('.') && lastSegment.toLowerCase() !== 'index') {
+          code = lastSegment;
+        }
+      }
+
+      const targetUrl = CONFIG.TARGET_URL || 'https://r.botbonnie.com/H52rK';
+
+      // 2. 如果解析到代碼，記錄點擊並跳轉
+      if (code) {
+        const salespersonCode = code.trim().toUpperCase();
+        console.log('偵測到業務員代碼:', salespersonCode);
+
+        // 如果設定了 GAS 網址，發送記錄請求
+        if (CONFIG.GAS_WEB_APP_URL && CONFIG.GAS_WEB_APP_URL.startsWith('http')) {
+          const logUrl = `${CONFIG.GAS_WEB_APP_URL}?action=log` +
+            `&code=${encodeURIComponent(salespersonCode)}` +
+            `&referer=${encodeURIComponent(document.referrer || '')}` +
+            `&userAgent=${encodeURIComponent(navigator.userAgent || '')}`;
+
+          // 使用 fetch (no-cors) 發送請求，避免被 CORS 政策擋下
+          fetch(logUrl, { mode: 'no-cors' })
+            .then(() => {
+              // 成功後立即跳轉
+              window.location.href = targetUrl;
+            })
+            .catch((err) => {
+              console.error('記錄失敗，直接跳轉:', err);
+              window.location.href = targetUrl;
+            });
+
+          // 設定防呆機制：若 600ms 內沒回應，直接強迫跳轉
+          setTimeout(() => {
+            window.location.href = targetUrl;
+          }, 600);
+        } else {
+          // 無設定 GAS，直接跳轉
+          window.location.href = targetUrl;
+        }
+      } else {
+        // 3. 沒有代碼，導回首頁 (Repo 根目錄)
+        // 若有 repo 名稱，導回 /[repo-name]/，否則導回 /
+        let homePath = '/';
+        if (pathParts.length > 1) {
+          homePath = '/' + pathParts[0] + '/';
+        }
+        window.location.href = homePath;
+      }
+    })();
+  </script>
+</body>
+</html>
