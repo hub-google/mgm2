@@ -302,15 +302,29 @@ function doGet(e) {
         
         const response = UrlFetchApp.fetch(targetApi, { muteHttpExceptions: true });
         const resText = response.getContentText();
-        const data = JSON.parse(resText);
+        
+        let data;
+        try {
+          data = JSON.parse(resText);
+        } catch (e) {
+          // 若 is.gd 返回非 JSON 格式錯誤 (例如 Error, database insert failed 等純文字)
+          data = { errorcode: 1, errormessage: resText };
+        }
         
         if (data && data.shorturl) {
           return JSON_OUTPUT({ success: true, shorturl: data.shorturl });
-        } else if (data && data.errorcode === 2) {
-          // 自訂別名重複，自動降級重新請求隨機短網址
+        } else {
+          // 自訂別名重複或 is.gd API 錯誤，自動降級重新請求隨機短網址
           const retryApi = "https://is.gd/create.php?format=json&url=" + encodeURIComponent(urlToShorten);
           const retryResponse = UrlFetchApp.fetch(retryApi, { muteHttpExceptions: true });
-          const retryData = JSON.parse(retryResponse.getContentText());
+          const retryText = retryResponse.getContentText();
+          
+          let retryData;
+          try {
+            retryData = JSON.parse(retryText);
+          } catch(e) {
+            retryData = { errorcode: 1, errormessage: retryText };
+          }
           
           if (retryData && retryData.shorturl) {
             return JSON_OUTPUT({ success: true, shorturl: retryData.shorturl, fallback: true });
