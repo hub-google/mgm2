@@ -34,15 +34,109 @@ function doGet(e) {
     if (!sheet) {
       sheet = ss.insertSheet("clicks");
       sheet.appendRow(["Time", "Code", "IP", "Browser", "OS", "Device", "Referer"]);
-      // 凍結第一列
       sheet.setFrozenRows(1);
     }
 
     const action = e.parameter.action;
+    const code = (e.parameter.code || '').trim().toUpperCase();
 
-    // 處理記錄點擊 (Log Click)
+    // 1. 客戶跳轉核心防護機制：如果傳入代碼且沒有管理指令，則返回跳轉頁面並在背景統計
+    if (code && action !== 'stats' && action !== 'detail' && action !== 'log') {
+      const scriptUrl = ScriptApp.getService().getUrl(); // 動態取得目前的 Web App 網址
+      const targetUrl = "https://r.botbonnie.com/H52rK";
+      
+      const html = `<!DOCTYPE html>
+      <html lang="zh-TW">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <base target="_top">
+        <title>正在跳轉至 LINE OA 推廣頁面...</title>
+        <style>
+          body {
+            background-color: #0b0f19;
+            color: #f3f4f6;
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            text-align: center;
+          }
+          .loader {
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border-left-color: #6366f1;
+            animation: spin 1s linear infinite;
+            margin-bottom: 24px;
+          }
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="loader"></div>
+        <h2>正在為您跳轉至 LINE OA...</h2>
+        <p>系統正在為您建立推薦關係，請稍候。</p>
+        
+        <!-- 隱密重定向連結，iframe 穿透跳轉的最安全做法 -->
+        <a id="redirect-link" href="${targetUrl}" target="_top" style="display:none;">跳轉中...</a>
+        
+        <script>
+          (function() {
+            const targetUrl = "${targetUrl}";
+            // 背景向同一個 GAS 上報點擊明細
+            const logUrl = "${scriptUrl}?action=log" +
+              "&code=${encodeURIComponent(code)}" +
+              "&referer=" + encodeURIComponent(document.referrer || "") +
+              "&userAgent=" + encodeURIComponent(navigator.userAgent || "");
+            
+            let redirected = false;
+            function doRedirect() {
+              if (redirected) return;
+              redirected = true;
+              try {
+                // 優先使用 target="_top" 模擬點擊跳轉以突破 iframe 限制，且不觸發 Same-Origin 安全阻擋
+                const link = document.getElementById('redirect-link');
+                if (link) {
+                  link.click();
+                } else {
+                  window.top.location = targetUrl;
+                }
+              } catch (e) {
+                try {
+                  // 備用：直接為 window.top.location 賦值 (跨域寫入是允許的，但不能讀取 .href)
+                  window.top.location = targetUrl;
+                } catch (e2) {
+                  // 最後手段：直接在當前頁面/iframe 內跳轉
+                  window.location.href = targetUrl;
+                }
+              }
+            }
+
+            // 使用 Image Beacon 發送日誌，跨網域相容性最高，不受 CORS 限制且不會因頁面卸載被瀏覽器取消
+            const beacon = new Image();
+            beacon.onload = doRedirect;
+            beacon.onerror = doRedirect;
+            beacon.src = logUrl;
+            
+            // 防呆時間設為 400ms，保證即使網路延遲也能秒級重定向
+            setTimeout(doRedirect, 400);
+          })();
+        </script>
+      </body>
+      </html>`;
+      return HtmlService.createHtmlOutput(html).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    }
+
+    // 2. 處理記錄點擊 (Log Click)
     if (action === 'log') {
-      const code = (e.parameter.code || 'UNKNOWN').trim().toUpperCase();
       const ip = e.parameter.ip || '';
       const referer = e.parameter.referer || '';
       const userAgent = e.parameter.userAgent || '';
@@ -65,19 +159,18 @@ function doGet(e) {
       return TEXT_OUTPUT("SUCCESS");
     }
 
-    // 處理獲取統計數據 (Get Stats)
+    // 3. 處理獲取統計數據 (Get Stats)
     if (action === 'stats') {
       const dataRange = sheet.getDataRange();
       const rows = dataRange.getValues();
       
-      // 去除首列標題
       const headers = rows[0];
       const records = rows.slice(1);
 
       const now = new Date();
       const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-      // 1. 計算基本指標
+      // 計算基本指標
       const totalClicks = records.length;
       const uniqueSales = new Set();
       let clicksToday = 0;
@@ -95,7 +188,7 @@ function doGet(e) {
 
       const uniqueSalespersons = uniqueSales.size;
 
-      // 2. 業務員排行榜 (Ranking)
+      // 業務員排行榜
       const salespersonMap = {};
       records.forEach(row => {
         const code = row[1];
@@ -115,7 +208,7 @@ function doGet(e) {
         .sort((a, b) => b.clicks - a.clicks)
         .slice(0, 50);
 
-      // 3. 點擊走勢圖 (Trend by Day - 最近 7 天)
+      // 點擊走勢圖 (最近 7 天)
       const trendDays = [];
       const trendMap = {};
       for (let i = 6; i >= 0; i--) {
@@ -128,7 +221,6 @@ function doGet(e) {
 
       records.forEach(row => {
         const clickedTime = new Date(row[0]);
-        // 轉為 local date string
         const dateStr = clickedTime.toISOString().split('T')[0];
         if (dateStr in trendMap) {
           trendMap[dateStr] += 1;
@@ -140,8 +232,7 @@ function doGet(e) {
         clicks: trendMap[date]
       }));
 
-      // 4. 明細日誌 (Recent Logs - 最新 100 筆)
-      // 將資料倒序排列 (最新的在前面)
+      // 明細日誌 (最新 100 筆)
       const recentLogs = records
         .slice(-100)
         .reverse()
@@ -170,16 +261,15 @@ function doGet(e) {
       });
     }
 
-    // 處理獲取特定業務員點擊明細 (Get Salesperson Detail Logs)
+    // 4. 處理獲取特定業務員點擊明細
     if (action === 'detail') {
-      const code = (e.parameter.code || '').trim().toUpperCase();
       const dataRange = sheet.getDataRange();
       const rows = dataRange.getValues();
       const records = rows.slice(1);
 
       const details = records
         .filter(row => row[1] === code)
-        .reverse() // 最新的在前
+        .reverse()
         .map(row => ({
           clicked_at: row[0],
           ip_address: row[2],
@@ -195,7 +285,47 @@ function doGet(e) {
       });
     }
 
-    return JSON_OUTPUT({ success: false, error: "Invalid action" });
+    // 5. 處理代為縮短網址 (Proxy Shorten URL to bypass CORS)
+    if (action === 'shorten') {
+      const urlToShorten = e.parameter.url || '';
+      const customSlug = e.parameter.shorturl || '';
+      
+      if (!urlToShorten) {
+        return JSON_OUTPUT({ success: false, error: "Missing url parameter" });
+      }
+      
+      try {
+        let targetApi = "https://is.gd/create.php?format=json&url=" + encodeURIComponent(urlToShorten);
+        if (customSlug) {
+          targetApi += "&shorturl=" + encodeURIComponent(customSlug);
+        }
+        
+        const response = UrlFetchApp.fetch(targetApi, { muteHttpExceptions: true });
+        const resText = response.getContentText();
+        const data = JSON.parse(resText);
+        
+        if (data && data.shorturl) {
+          return JSON_OUTPUT({ success: true, shorturl: data.shorturl });
+        } else if (data && data.errorcode === 2) {
+          // 自訂別名重複，自動降級重新請求隨機短網址
+          const retryApi = "https://is.gd/create.php?format=json&url=" + encodeURIComponent(urlToShorten);
+          const retryResponse = UrlFetchApp.fetch(retryApi, { muteHttpExceptions: true });
+          const retryData = JSON.parse(retryResponse.getContentText());
+          
+          if (retryData && retryData.shorturl) {
+            return JSON_OUTPUT({ success: true, shorturl: retryData.shorturl, fallback: true });
+          }
+        }
+        
+        return JSON_OUTPUT({ success: false, error: data.errormessage || "is.gd API error" });
+      } catch (err) {
+        return JSON_OUTPUT({ success: false, error: err.toString() });
+      }
+    }
+
+    // 預設重定向 (無參數訪問直接跳轉至 LINE OA)
+    const fallbackUrl = "https://r.botbonnie.com/H52rK";
+    return HtmlService.createHtmlOutput(`<script>try { window.top.location = "${fallbackUrl}"; } catch(e) { window.location.href = "${fallbackUrl}"; }</script>`);
 
   } catch (err) {
     return JSON_OUTPUT({ success: false, error: err.toString() });
@@ -243,4 +373,11 @@ function parseUserAgent(ua) {
   }
 
   return { browser: browser, os: os, device: device };
+}
+
+/**
+ * 處理 POST 請求，對應至 doGet 處理邏輯
+ */
+function doPost(e) {
+  return doGet(e);
 }

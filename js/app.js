@@ -142,22 +142,33 @@ document.addEventListener('DOMContentLoaded', () => {
     generatorResult.classList.remove('hidden');
     generatorResult.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
-    // 2. 調用短網址 API (is.gd)
+    // 2. 調用短網址 API (透過後端 Proxy 繞過 CORS)
     try {
-      const response = await fetch(`https://is.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`);
+      const customSlug = `mgm2_${code}`;
+      let proxyUrl = '';
+      
+      if (useGas) {
+        proxyUrl = `${CONFIG.GAS_WEB_APP_URL}?action=shorten&url=${encodeURIComponent(longUrl)}&shorturl=${encodeURIComponent(customSlug)}`;
+      } else if (isLocal) {
+        proxyUrl = `/api/shorten?url=${encodeURIComponent(longUrl)}&shorturl=${encodeURIComponent(customSlug)}`;
+      } else {
+        throw new Error('無可用的後端服務進行短網址代理');
+      }
+      
+      const response = await fetch(proxyUrl);
       const data = await response.json();
       
-      if (data && data.shorturl) {
+      if (data && data.success && data.shorturl) {
         generatedUrl = data.shorturl;
         generatedUrlInput.value = generatedUrl;
         generatedUrlInput.style.color = '';
         // 替換二維碼為短網址，使掃描結果同樣被遮蔽且更簡潔
         drawQrCode(generatedUrl);
       } else {
-        throw new Error('API return error');
+        throw new Error(data.error || 'Proxy API returned success:false');
       }
     } catch (err) {
-      console.warn('短網址生成失敗，改用原始網址作為預設:', err);
+      console.warn('短網址代理生成失敗，改用原始網址作為預設:', err);
       generatedUrl = longUrl;
       generatedUrlInput.value = longUrl;
       generatedUrlInput.style.color = '';

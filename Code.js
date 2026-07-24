@@ -40,6 +40,7 @@ function doGet(e) {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <base target="_top">
         <title>正在跳轉至 LINE OA 推廣頁面...</title>
         <style>
           body {
@@ -73,26 +74,50 @@ function doGet(e) {
         <div class="loader"></div>
         <h2>正在為您跳轉至 LINE OA...</h2>
         <p>系統正在為您建立推薦關係，請稍候。</p>
+        
+        <!-- 隱密重定向連結，iframe 穿透跳轉的最安全做法 -->
+        <a id="redirect-link" href="${targetUrl}" target="_top" style="display:none;">跳轉中...</a>
+        
         <script>
           (function() {
+            const targetUrl = "${targetUrl}";
             // 背景向同一個 GAS 上報點擊明細
             const logUrl = "${scriptUrl}?action=log" +
               "&code=${encodeURIComponent(code)}" +
               "&referer=" + encodeURIComponent(document.referrer || "") +
               "&userAgent=" + encodeURIComponent(navigator.userAgent || "");
             
-            fetch(logUrl, { mode: "no-cors" })
-              .then(() => {
-                window.top.location.href = "${targetUrl}";
-              })
-              .catch(() => {
-                window.top.location.href = "${targetUrl}";
-              });
-              
-            // 防呆重定向：若 API 回應超過 500ms 則直接跳轉
-            setTimeout(() => {
-              window.top.location.href = "${targetUrl}";
-            }, 500);
+            let redirected = false;
+            function doRedirect() {
+              if (redirected) return;
+              redirected = true;
+              try {
+                // 優先使用 target="_top" 模擬點擊跳轉以突破 iframe 限制，且不觸發 Same-Origin 安全阻擋
+                const link = document.getElementById('redirect-link');
+                if (link) {
+                  link.click();
+                } else {
+                  window.top.location = targetUrl;
+                }
+              } catch (e) {
+                try {
+                  // 備用：直接為 window.top.location 賦值 (跨域寫入是允許的，但不能讀取 .href)
+                  window.top.location = targetUrl;
+                } catch (e2) {
+                  // 最後手段：直接在當前頁面/iframe 內跳轉
+                  window.location.href = targetUrl;
+                }
+              }
+            }
+
+            // 使用 Image Beacon 發送日誌，跨網域相容性最高，不受 CORS 限制且不會因頁面卸載被瀏覽器取消
+            const beacon = new Image();
+            beacon.onload = doRedirect;
+            beacon.onerror = doRedirect;
+            beacon.src = logUrl;
+            
+            // 防呆時間設為 400ms，保證即使網路延遲也能秒級重定向
+            setTimeout(doRedirect, 400);
           })();
         </script>
       </body>
@@ -250,9 +275,47 @@ function doGet(e) {
       });
     }
 
+    // 5. 處理代為縮短網址 (Proxy Shorten URL to bypass CORS)
+    if (action === 'shorten') {
+      const urlToShorten = e.parameter.url || '';
+      const customSlug = e.parameter.shorturl || '';
+      
+      if (!urlToShorten) {
+        return JSON_OUTPUT({ success: false, error: "Missing url parameter" });
+      }
+      
+      try {
+        let targetApi = "https://is.gd/create.php?format=json&url=" + encodeURIComponent(urlToShorten);
+        if (customSlug) {
+          targetApi += "&shorturl=" + encodeURIComponent(customSlug);
+        }
+        
+        const response = UrlFetchApp.fetch(targetApi, { muteHttpExceptions: true });
+        const resText = response.getContentText();
+        const data = JSON.parse(resText);
+        
+        if (data && data.shorturl) {
+          return JSON_OUTPUT({ success: true, shorturl: data.shorturl });
+        } else if (data && data.errorcode === 2) {
+          // 自訂別名重複，自動降級重新請求隨機短網址
+          const retryApi = "https://is.gd/create.php?format=json&url=" + encodeURIComponent(urlToShorten);
+          const retryResponse = UrlFetchApp.fetch(retryApi, { muteHttpExceptions: true });
+          const retryData = JSON.parse(retryResponse.getContentText());
+          
+          if (retryData && retryData.shorturl) {
+            return JSON_OUTPUT({ success: true, shorturl: retryData.shorturl, fallback: true });
+          }
+        }
+        
+        return JSON_OUTPUT({ success: false, error: data.errormessage || "is.gd API error" });
+      } catch (err) {
+        return JSON_OUTPUT({ success: false, error: err.toString() });
+      }
+    }
+
     // 預設重定向 (無參數訪問直接跳轉至 LINE OA)
     const fallbackUrl = "https://r.botbonnie.com/H52rK";
-    return HtmlService.createHtmlOutput(`<script>window.top.location.href = "${fallbackUrl}";</script>`);
+    return HtmlService.createHtmlOutput(`<script>try { window.top.location = "${fallbackUrl}"; } catch(e) { window.location.href = "${fallbackUrl}"; }</script>`);
 
   } catch (err) {
     return JSON_OUTPUT({ success: false, error: err.toString() });
@@ -300,4 +363,11 @@ function parseUserAgent(ua) {
   }
 
   return { browser: browser, os: os, device: device };
+}
+
+/**
+ * 處理 POST 請求，對應至 doGet 處理邏輯
+ */
+function doPost(e) {
+  return doGet(e);
 }

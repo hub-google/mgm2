@@ -27,6 +27,47 @@ app.use((req, res, next) => {
 app.use(express.static(__dirname));
 
 /**
+ * API Endpoint: Proxy URL Shortening to is.gd to bypass browser CORS
+ */
+app.get('/api/shorten', async (req, res) => {
+  const urlToShorten = req.query.url;
+  const customSlug = req.query.shorturl;
+
+  if (!urlToShorten) {
+    return res.status(400).json({ success: false, error: 'Missing url parameter' });
+  }
+
+  try {
+    let targetApi = `https://is.gd/create.php?format=json&url=${encodeURIComponent(urlToShorten)}`;
+    if (customSlug) {
+      targetApi += `&shorturl=${encodeURIComponent(customSlug)}`;
+    }
+
+    const response = await fetch(targetApi);
+    const data = await response.json();
+
+    if (data && data.shorturl) {
+      return res.json({ success: true, shorturl: data.shorturl });
+    } else if (data && data.errorcode === 2) {
+      // Custom URL taken, fallback to random short URL
+      console.warn(`[Shortener] Custom slug [${customSlug}] taken, requesting random short url...`);
+      const retryApi = `https://is.gd/create.php?format=json&url=${encodeURIComponent(urlToShorten)}`;
+      const retryResponse = await fetch(retryApi);
+      const retryData = await retryResponse.json();
+
+      if (retryData && retryData.shorturl) {
+        return res.json({ success: true, shorturl: retryData.shorturl, fallback: true });
+      }
+    }
+
+    return res.status(500).json({ success: false, error: data.errormessage || 'is.gd API error' });
+  } catch (err) {
+    console.error('[Shortener] Error proxying to is.gd:', err);
+    res.status(500).json({ success: false, error: err.toString() });
+  }
+});
+
+/**
  * API Endpoint: Get real-time stats
  */
 app.get('/api/stats', async (req, res) => {
