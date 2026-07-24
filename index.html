@@ -2,8 +2,14 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
+  <!-- Cache Control to prevent browser cache issues -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>正在跳轉...</title>
-  <script src="js/config.js"></script>
+  <script>
+    document.write('<script src="js/config.js?v=' + new Date().getTime() + '"><\/script>');
+  </script>
   <script>
     // 隱蔽安全機制：直接進入根網域的使用者會被立刻跳轉至 LINE OA，避免看見後端產生器與數據
     window.location.href = CONFIG.TARGET_URL || "https://r.botbonnie.com/H52rK";
